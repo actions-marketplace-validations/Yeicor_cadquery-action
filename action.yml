@@ -1,5 +1,9 @@
-name: "Cadquery Action"
-description: "Builds and optionally renders cadquery models. It may also build a static website for GitHub Pages."
+name: "OCP Action"
+author: "Yeicor"
+description: "GitHub Action that builds OCP models (CadQuery/Build123d/...), renders them and sets up a model viewer on Github Pages."
+branding:
+  icon: "package"
+  color: "yellow"
 inputs:
   scripts:
     description: "The |-separated scripts containing the model(s) to build."
@@ -9,6 +13,18 @@ inputs:
     description: "The |-separated formats in which to build all model(s)."
     required: false
     default: "STL|STEP|AMF|SVG|TJS|DXF|VRML|VTP|3MF|GLTF"
+  tolerance:
+    description: "The tolerance to use when building the model(s)."
+    required: false
+    default: "0.1"
+  angular_tolerance:
+    description: "The angular tolerance to use when building the model(s)."
+    required: false
+    default: "0.1"
+  y-up:
+    description: "If true, all model(s) are converted from Z-up to Y-up."
+    required: false
+    default: "false"
   website:
     description: "Relative path where a static website to visualize the models using GitHub Pages will be built. Models and renders will be available at <website>/<models>/... Disabled if empty."
     required: false
@@ -25,9 +41,9 @@ runs:
   using: "composite"
   steps:
 
-    - name: "Install cadquery"
+    - name: "Install CadQuery for exporting OCP models"
       shell: "bash"
-      run: "pip install -r requirements.txt"
+      run: "pip install -r ${{ github.action_path }}/requirements.txt"
 
     - name: "Build model(s)"
       id: "build"
@@ -45,21 +61,26 @@ runs:
         for script in $(echo "${{ inputs.scripts }}" | tr "|" "\n"); do
         
           # Copy the library to the script's folder
-          cp "${{ github.action_path }}/cadquery_action_api.py" "$(dirname "$script")"
+          cp "${{ github.action_path }}/__ocp_action_api.py" "$(dirname "$script")"
         
           # Inject our import to define the show() function
-          sed -i '1s/^/from cadquery_action_api import *\n/' $script
+          sed -i '1s/^/from __ocp_action_api import *\n/' $script
         
           # Define environment variables for the script
-          export CQ_ACTION_OUT_DIR="$base_folder/$(realpath --relative-to="$GITHUB_WORKSPACE" "$(dirname "$script")")/$(basename "$script" .py)"
-          export CQ_ACTION_DEF_NAME="$(basename "$script" .py)"
-          export CQ_ACTION_WANTED_FORMATS="${{ inputs.formats }}"
+          export OCP_ACTION_OUT_DIR="$base_folder/$(realpath --relative-to="$GITHUB_WORKSPACE" "$(dirname "$script")")/$(basename "$script" .py)"
+          export OCP_ACTION_DEF_NAME="$(basename "$script" .py)"
+          export OCP_ACTION_WANTED_FORMATS="${{ inputs.formats }}"
+          export OCP_ACTION_TOLERANCE="${{ inputs.tolerance }}"
+          export OCP_ACTION_ANGULAR_TOLERANCE="${{ inputs.angular_tolerance }}"
+          export OCP_ACTION_Y_UP="${{ inputs.y-up }}"
         
           # Build the model(s)
-          python "$script"
+          pushd "$(dirname "$script")"
+          python "$(basename "$script")"
+          popd
         
           # Save the folder
-          all_model_folders="$all_model_folders|$CQ_ACTION_OUT_DIR"
+          all_model_folders="$all_model_folders|$OCP_ACTION_OUT_DIR"
         done
         
         # Remove the first | from the list
